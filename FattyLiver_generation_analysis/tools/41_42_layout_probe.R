@@ -1,0 +1,18 @@
+# Private export-layout test using real technical-probe estimates only.
+# This does not fit, recompute FDR, select biological discoveries or publish.
+root <- Sys.getenv('FATTYLIVER_ROOT', 'E:/YFS/workspace/FattyLiver_generation_analysis')
+source(file.path(root,'R/generation_ADE_extensions.R'),encoding='UTF-8')
+cfg <- ade_setup(root)
+source(file.path(root,'R/generation_ADE_figures.R'),encoding='UTF-8')
+dest <- file.path(root,'inventory/ADE_20261101/private_layout_test')
+dir.create(dest, recursive=TRUE, showWarnings=FALSE)
+for (d in c('figures','tables','audit','reports')) dir.create(file.path(dest,d),showWarnings=FALSE)
+rp <- file.path(root,'outputs/41_Generation_heterogeneity/_running/generation_interaction_v1_20261101_20261101_190740/private/analysis_result.rds')
+r <- readRDS(rp); ids <- unique(r$effects$feature_id)
+ade_heatmaps(r, ids, cfg, dest, 'TECHNICAL_A_layout_heatmap')
+ade_forests(r, ids, cfg, dest, 'TECHNICAL_A_layout_forest')
+dp <- file.path(root,'outputs/42_Functional_pathways/_running/humann_pathways_v1_20261101/private/analysis_result.rds')
+r <- readRDS(dp); ids <- unique(r$effects$feature_id)
+ade_heatmaps(r, ids, cfg, dest, 'TECHNICAL_D_layout_heatmap', generation='Overall')
+ade_forests(r, ids, cfg, dest, 'TECHNICAL_D_layout_forest', generation='Overall')
+cat('PASS private export-layout probe; no scientific publication\n')

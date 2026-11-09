@@ -1,0 +1,20 @@
+root<-'E:/YFS/workspace/FattyLiver_generation_analysis'
+if(.Platform$OS.type=='windows')invisible(Sys.setlocale('LC_CTYPE','.UTF-8'))
+.libPaths(c(file.path(root,'.r-library-sgb'),.libPaths()))
+out<-file.path(root,'outputs/24_Two_generation_reanalysis/_running/two_generation_20261024');prefix<-file.path(out,'private/work_kernel_B1_family')
+N<-3193L;k<-as.integer(file.info(paste0(prefix,'_Q.bin'))$size/(8*N));B<-9999L
+readbin<-function(suffix,what,n,size){con<-file(paste0(prefix,suffix),'rb');on.exit(close(con));readBin(con,what,n=n,size=size,endian='little')}
+E<-matrix(readbin('_E.bin','double',N*N,8),N,N);Q<-matrix(readbin('_Q.bin','double',N*k,8),N,k);P<-matrix(readbin('_P.bin','integer',N*B,4),B,N);null<-read.csv(paste0(prefix,'_F.csv'))$F_null
+qC<-Q[,-1,drop=FALSE];qx<-Q[,1];num<-as.numeric(crossprod(qx,E%*%qx));den<-sum(diag(E))-num
+fit<-list(Ybar=E,CCA=list(rank=1L,qrank=1L,tot.chi=num,QR=qr(cbind(qC,qx)),u=matrix(0,N,1)),CA=list(tot.chi=den,rank=N-k-1,u=matrix(0,N,1)),pCCA=list(rank=ncol(qC),QR=qr(qC)),method='dbrda',call=quote(NULL))
+class(fit)<-c('dbrda','rda','cca')
+test<-vegan::permutest(fit,permutations=P[1:10,,drop=FALSE],model='reduced',parallel=1L)
+m<-readRDS(file.path(out,'private/stage_prepare.rds'))$metadata
+m<-m[complete.cases(m[,c('generation','age','sex','prep_batch','seq_pool','season_sin','season_cos','abx_recent')]),]
+df_full<-N-length(unique(m$family_id))-k
+compact<-as.numeric(test$F.perm)*df_full/test$df[2]
+reference<-vapply(1:10,function(i){ep<-E[P[i,],P[i,]];n<-as.numeric(crossprod(qx,ep%*%qx));projection<-sum(qC*(ep%*%qC));n/((sum(diag(E))-projection-n)/df_full)},numeric(1))
+z<-data.frame(draw=1:10,python=head(null,10),compact_vegan=compact,R_direct=reference,difference=compact-head(null,10))
+print(z,digits=16);cat('df original',df_full,'compact',test$df[2],'observed num',num,'den',den,'\n')
+write.csv(z,file.path(out,'audit/composition_diagnostic_compact.csv'),row.names=FALSE)
+saveRDS(list(compact_fit=fit,original_df=df_full,test=test),file.path(out,'private/composition_compact_diagnostic.rds'))

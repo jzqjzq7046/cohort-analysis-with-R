@@ -1,0 +1,41 @@
+# Independent preservation checks for the display-only third-ring revision.
+if(.Platform$OS.type=='windows')invisible(Sys.setlocale('LC_CTYPE','.UTF-8'))
+root <- Sys.getenv('FATTYLIVER_ROOT','E:/YFS/workspace/FattyLiver_generation_analysis')
+source(file.path(root,'R/significant_sgb_circular_tree.R'),encoding='UTF-8')
+cfg <- sst_setup(root)
+module <- file.path(root,'outputs/40_Steatosis_SGB_circular_tree')
+out <- file.path(module,'current',readLines(file.path(module,'LATEST_RUN.txt'),n=1))
+old_id <- 'large_legend_SGB_reference_style_v3_20261101'
+old <- file.path(module,'history',old_id)
+if(!dir.exists(old))old <- file.path(module,'current',old_id)
+stopifnot(normalizePath(out,winslash='/')!=normalizePath(old,winslash='/'))
+a <- readRDS(file.path(old,'private/display_result.rds'))
+b <- readRDS(file.path(out,'private/display_result.rds'))
+checks <- list()
+record <- function(test,pass)checks[[length(checks)+1L]] <<- data.frame(test=test,pass=isTRUE(pass))
+for(k in c('taxonomy','all_results','tree','geometry','colours','limits','counts','phylum_counts',
+           'N','families','model_N','cases','distance_delta','canvas_width_mm','canvas_height_mm',
+           'plot_x_limits','plot_y_limits','legend_font_multiplier','legend_key_left','legend_key_right'))
+  record(paste('Unchanged',k),identical(a[[k]],b[[k]]))
+ac <- tf_read(file.path(old,'tables/Figure40_Three_ring_source_EN.csv'))
+bc <- tf_read(file.path(out,'tables/Figure40_Three_ring_source_EN.csv'))
+record('All ring values, identifiers and q unchanged',identical(ac[,setdiff(names(ac),'fill')],bc[,setdiff(names(bc),'fill')]))
+record('First and second ring colours unchanged',identical(ac$fill[ac$track<3],bc$fill[bc$track<3]))
+record('Only third-ring colours changed',any(ac$fill[ac$track==3]!=bc$fill[bc$track==3]))
+record('Third-ring palette blue to red',identical(b$association_colors,c(Reference='#2166AC',Comparison='#B2182B')))
+association_cfg <- cfg; association_cfg$binary_colors <- b$association_colors
+record('Colour key endpoints and null value',identical(toupper(sg_ramp(c(b$limits$disease[1],0,b$limits$disease[2]),b$limits$disease,association_cfg)),c('#2166AC','#FFFFFF','#B2182B')))
+record('Default circular palette retained for other objects',identical(sgt_cells(a,cfg)$fill,ac$fill))
+record('Full-label positions unchanged',identical(sgt_name_positions(a),sgt_name_positions(b)))
+for(ext in c('pdf','png','tiff','svg'))record(paste('Export',ext),file.exists(file.path(out,'figures',paste0(sst_stem,'.',ext))))
+for(pair in list(c('.collision-audit.json','verdict'),c('.effective-text-audit.json','verdict'))){
+  z <- jsonlite::read_json(file.path(out,'audit',paste0(sst_stem,pair[1])))
+  record(paste('Rendered QA',pair[1]),identical(z[[pair[2]]],'PASS'))
+}
+lr_check_hashes(b$protected);lr_check_hashes(b$inherited_protected)
+record('Original input hashes preserved',TRUE)
+result <- do.call(rbind,checks)
+fl_write_csv(result,file.path(out,'audit/independent_palette_validation.csv'))
+print(result,row.names=FALSE)
+stopifnot(all(result$pass))
+cat(sprintf('PASS: %d/%d palette, preservation and delivery checks\n',sum(result$pass),nrow(result)))

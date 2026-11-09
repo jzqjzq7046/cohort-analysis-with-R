@@ -1,0 +1,36 @@
+# Optional staging from this run's newly completed primary-feature checkpoints.
+# No previous module fits or uncompleted model state are consumed.
+invisible(Sys.setlocale('LC_CTYPE','.UTF-8'))
+root<-Sys.getenv('FATTYLIVER_ROOT',unset='E:/YFS/workspace/FattyLiver_generation_analysis')
+sys.source(file.path(root,'R/pathway_function_sources.R'),envir=.GlobalEnv)
+cfg<-pfs_setup(root)
+sys.source(file.path(root,'R/pathway_function_sources_details.R'),envir=.GlobalEnv)
+args<-commandArgs(TRUE);stopifnot(length(args)==1L)
+out<-normalizePath(args[1],winslash='/',mustWork=TRUE)
+boundary<-paste0(normalizePath(file.path(root,'outputs/44_Pathway_function_sources/_running'),winslash='/',mustWork=TRUE),'/')
+stopifnot(startsWith(out,boundary))
+options(fatty_liver.ade_log=file.path(out,'audit/source_stage.log'))
+x<-readRDS(file.path(out,'private/functional_input.rds'))
+d<-v3_design(x,v3_micro_samples(x)$B1$mask,v3_micro_samples(x)$B1$fields)
+cache<-file.path(root,'outputs/44_Pathway_function_sources/_checkpoints',pfs_protocol,'private')
+first<-list.files(cache,pattern='^b001.rds$',recursive=TRUE,full.names=TRUE)
+is_primary<-vapply(first,function(p){z<-readRDS(p)$effects;all(z$model=='B1'&z$generation=='Overall')},logical(1))
+stopifnot(sum(is_primary)==1L)
+pieces<-list.files(dirname(first[is_primary]),pattern='^b[0-9]{3}\\.rds$',full.names=TRUE)
+e<-ov_bind(lapply(pieces,function(p)readRDS(p)$effects))
+vari<-vapply(seq_len(ncol(d$relative)),function(j)length(unique(d$relative[,j]))>1L,logical(1))
+eligible<-d$filter$feature_id[d$filter$retained&vari]
+stopifnot(length(eligible)==nrow(e),setequal(eligible,e$feature_id),!anyDuplicated(e$feature_id))
+e<-ade_bh(e,'B1_overall_all_feature_by_generation_effects',nrow(e))
+e$N<-nrow(d$metadata);e$cases<-sum(d$metadata$fatty_liver)
+e$families<-length(unique(d$metadata$family_id))
+for(v in setdiff(names(x$features),'feature_id'))e[[v]]<-x$features[[v]][match(e$feature_id,x$features$feature_id)]
+r<-list(effects=e,annotation=x$features,protected=x$protected,
+  fits=list(B1=list(effects=e,sample_ids=as.character(d$metadata$sample_id))))
+r<-pfs_classify(r,cfg,out)
+r<-pfs_sources(r,cfg,out)
+sigcols<-c('feature_id','beta_log2','P_raw','P_BH')
+primary_signature<-digest::digest(e[order(e$feature_id),sigcols],algo='sha256')
+saveRDS(list(protocol=pfs_protocol,primary_signature=primary_signature,classification=r$classification,
+  representatives=r$representatives,sources=r$sources),file.path(out,'private/source_standalone.rds'))
+ade_log('Independent observed-source staging COMPLETED')
